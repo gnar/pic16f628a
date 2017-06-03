@@ -98,6 +98,9 @@ display_number:
 ;  Outputs
 ;   hundreds - the hundreds digit of the BCD conversion
 ;   tens_and_ones - the tens and ones digits of the BCD conversion
+;
+; Routine written by Scott Dattalo, comments added by Alex Forencich,
+; see http://www.piclist.com/techref/microchip/math/radix/b2bhp-8b3d.htm
 
 bin2bcd:
 	clrf    hundreds
