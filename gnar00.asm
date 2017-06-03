@@ -13,21 +13,17 @@ PIN_BTN1 equ RB4
 PIN_BTN2 equ RB5
 PIN_BTN3 equ RB6
 
-; scratch space
-temp1 equ 0x21
-temp2 equ 0x22
+; scratch variables
+temp1 equ 0x20
 
-; timing variables
-bk_w equ 0x23
-bk_status equ 0x24
-ticks equ 0x25
-last_btn equ 0x40
+; variables used by the interrupt vector routine
+int_temp equ 0x21
+bk_w equ 0x22
+bk_status equ 0x23
+ticks equ 0x24
+last_btn equ 0x45
 
 ; kitchen clock state
-state equ 0x26
-minutes equ 0x28
-seconds equ 0x29
-
 READY_BIT equ 0
 READY equ (1 << READY_BIT)
 
@@ -37,7 +33,11 @@ COUNTDOWN equ (1 << COUNTDOWN_BIT)
 BEEPING_BIT equ 2
 BEEPING equ (1 << BEEPING_BIT)
 
-; bcd converter arguments
+state equ 0x26
+minutes equ 0x27
+seconds equ 0x28
+
+; bcd converter arguments / return value
 bin equ 0x30 ; 8-bit binary number A1*16+A0
 hundreds equ 0x31 ; the hundreds digit of the BCD conversion
 tens_and_ones equ 0x32 ; the tens and ones digits of the BCD conversion
@@ -59,11 +59,11 @@ intvec:
 
 	; <---- executed at 250 Hz
 	
-	; read buttons, detect presses
+	; 1. Read buttons, detect presses
 	comf last_btn, f
 	movfw PORTB
 	andlw B'01110000'	; w <- current button state
-	movwf temp1
+	movwf int_temp
 	andwf last_btn, f	; last_btn <- ~last_btn & w
 	btfsc last_btn, PIN_BTN1
 	 call on_plus_10_btn
@@ -71,10 +71,17 @@ intvec:
 	 call on_plus_1_btn
 	btfsc last_btn, PIN_BTN3
 	 call on_start_btn
-	movfw temp1		; last_btn <- current button state
+	movfw int_temp		; last_btn <- current button state
 	movwf last_btn
 
 	; 2. Display update
+
+	; for blinking: 'int_temp' is '1' every half second, '0' else
+	clrf int_temp
+	movlw D'125'
+	subwf ticks, w
+	btfss STATUS, C
+	 bsf int_temp, 0
 
 	; blink if state == COUNTDOWN && minutes == 1 && seconds < 30
 	btfss state, COUNTDOWN_BIT
@@ -82,18 +89,20 @@ intvec:
 	decf minutes, w
 	btfss STATUS, Z
 	 goto _display_minutes		; minutes != 1
-	movlw D'30'
+	movlw D'31'
 	subwf seconds, w
 	btfsc STATUS, C
-	 goto _display_minutes		; seconds >= 30
-	movlw D'125'
-	subwf ticks, w
-	btfss STATUS, C
+	 goto _display_minutes		; seconds > 30
+	btfss int_temp, 0
 	 goto _display_minutes		; every half second
 	call display_blank
 	goto _display_done
 _display_minutes:
 	movfw minutes
+	btfss int_temp, 0
+	 iorlw B'10000000' 
+	btfss state, COUNTDOWN_BIT
+	 andlw B'01111111'
 	call display_number
 _display_done:
 	
@@ -225,6 +234,8 @@ on_start_btn_when_ready:
 	 return
 	movlw D'60'
 	movwf seconds
+	movlw D'250'
+	movwf ticks
 
 	movlw COUNTDOWN
 	movwf state

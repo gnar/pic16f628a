@@ -29,7 +29,6 @@ segment_table:
 	retlw B'10100100' ; 7 
 	retlw B'11111110' ; 8 
 	retlw B'11110110' ; 9
-	retlw B'00000000' ; 10
 
 display_blank:
 	movlw 0
@@ -56,13 +55,27 @@ display_blank:
 
 	return
 
+;;
+;; display_number
+;;
+;; in: W
+;; out: -
+;;
 display_number:
+	; move bit 7 from 'bin' to bit 0 of 'temp1'
 	movwf bin
+	clrf temp1
+	btfsc bin, 7
+	 bsf temp1, 0
+	bcf bin, 7
+	; convert 'bin' to bcd ('tens_and_ones')
 	call bin2bcd
 
 	movfw tens_and_ones
 	andlw 0x0f
 	call segment_table
+	iorwf temp1, w		; enable dot?
+;	iorlw 1
 
 	call shift
 	call shift
