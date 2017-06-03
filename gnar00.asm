@@ -2,7 +2,8 @@
 
 	errorlevel -302 ; disable bank switch warning
 
-	__CONFIG	_LVP_OFF & _BODEN_OFF & _MCLRE_OFF & _WDT_OFF & _INTRC_OSC_NOCLKOUT
+;	__CONFIG	_LVP_OFF & _BODEN_OFF & _MCLRE_OFF & _WDT_OFF & _INTRC_OSC_NOCLKOUT
+	__CONFIG	_LVP_OFF & _BODEN_OFF & _MCLRE_OFF & _WDT_OFF & _FOSC_XT
 
 PIN_DATA equ RB0
 PIN_SHIFT equ RB1
@@ -73,9 +74,28 @@ intvec:
 	movfw temp1		; last_btn <- current button state
 	movwf last_btn
 
-	; display update
+	; 2. Display update
+
+	; blink if state == COUNTDOWN && minutes == 1 && seconds < 30
+	btfss state, COUNTDOWN_BIT
+	 goto _display_minutes		; state != COUNTDOWN
+	decf minutes, w
+	btfss STATUS, Z
+	 goto _display_minutes		; minutes != 1
+	movlw D'30'
+	subwf seconds, w
+	btfsc STATUS, C
+	 goto _display_minutes		; seconds >= 30
+	movlw D'125'
+	subwf ticks, w
+	btfss STATUS, C
+	 goto _display_minutes		; every half second
+	call display_blank
+	goto _display_done
+_display_minutes:
 	movfw minutes
 	call display_number
+_display_done:
 	
 	; enable alarm if state == BEEPING
 	btfss state, BEEPING_BIT

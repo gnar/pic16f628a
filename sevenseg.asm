@@ -29,6 +29,32 @@ segment_table:
 	retlw B'10100100' ; 7 
 	retlw B'11111110' ; 8 
 	retlw B'11110110' ; 9
+	retlw B'00000000' ; 10
+
+display_blank:
+	movlw 0
+	call shift
+	call shift
+	call shift
+	call shift
+	call shift
+	call shift
+	call shift
+	call shift
+
+	movlw 0
+	call shift
+	call shift
+	call shift
+	call shift
+	call shift
+	call shift
+	call shift
+	call shift
+
+	call store
+
+	return
 
 display_number:
 	movwf bin
