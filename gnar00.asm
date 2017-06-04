@@ -42,6 +42,10 @@ bin equ 0x30 ; 8-bit binary number A1*16+A0
 hundreds equ 0x31 ; the hundreds digit of the BCD conversion
 tens_and_ones equ 0x32 ; the tens and ones digits of the BCD conversion
 
+; sound card
+pwm_enabled equ 0x40
+pwm_duty_cycle equ 0x41 ; 0..1023
+
 	org 0
 boot:
 	goto main		; boot entry point
@@ -49,13 +53,14 @@ boot:
 	org 4
 intvec:
 	bcf INTCON, GIE 	; disable interrupt
-
 	movwf bk_w		; w retten 
 	swapf STATUS, w		; status retten 
 	movwf bk_status
 	
 	movlw D'131'          ; 256-125=131 ((1MHz : 32 ): 125 = 250 Hz) 
 	movwf TMR0
+
+	; we can spend about 131*32768 instructions here...
 
 	; <---- executed at 250 Hz
 	
@@ -83,7 +88,9 @@ intvec:
 	btfss STATUS, C
 	 bsf int_temp, 0
 
-	; blink if state == COUNTDOWN && minutes == 1 && seconds < 30
+	; display minutes. 
+	; - blink digits if state == COUNTDOWN && minutes == 1 && seconds < 30
+	; - blink right dot if state == COUNTDOWN
 	btfss state, COUNTDOWN_BIT
 	 goto _display_minutes		; state != COUNTDOWN
 	decf minutes, w
@@ -105,22 +112,22 @@ _display_minutes:
 	 andlw B'01111111'
 	call display_number
 _display_done:
-	
-	; enable alarm if state == BEEPING
-	btfss state, BEEPING_BIT
-	 call alarm_off
-	btfsc state, BEEPING_BIT
-	 call alarm_on
 
+	; 3. Handle alarm (if state=BEEPING, beep 4 times per second with 440 Hz)
+	btfsc state, BEEPING_BIT
+	 call alarm_beep_update
+
+	; 4. Handle seconds passing
 	decfsz ticks, f
-	goto _cont
+	 goto _done
 	movlw  D'250'
 	movwf ticks
 
 	; <---- executed at 1 Hz
+
 	call on_1hz
  
-_cont:
+_done:
 	swapf bk_status, w	; STATUS zurück 
 	movwf STATUS  
 	swapf bk_w, f		; w zurück mit flags 
@@ -152,6 +159,9 @@ main:
 	movlw B'00000000'
 	movwf PORTB
 
+	; Initialize alarm
+	call alarm_initialize
+
 	; Initialize Timer
 	bsf     STATUS, RP0     ; auf Bank 1 umschalten 
 	movlw   B'10000100'     ; internen Takt zählen, Vorteiler zum Timer0, 32:1 
@@ -182,7 +192,8 @@ on_1hz:
 	movwf seconds
 	decfsz minutes, f
 	 return
-
+_hack:
+	call alarm_beep_on
 	movlw BEEPING
 	movwf state
 	return
@@ -220,9 +231,9 @@ on_start_btn:
 	btfsc state, READY_BIT
 	 goto on_start_btn_when_ready
 
-	; reset to zero, go to READY state
+	; reset to zero, turn off alarm if any, go to READY state
 	clrf minutes
-
+	call alarm_beep_off
 	movlw READY
 	movwf state
 	return
@@ -231,7 +242,7 @@ on_start_btn_when_ready:
 	; if state == READY, go to COUNTDOWN state (only if minutes > 0)
 	movf minutes, f
 	btfsc STATUS, Z
-	 return
+	 goto _hack ;return
 	movlw D'60'
 	movwf seconds
 	movlw D'250'
